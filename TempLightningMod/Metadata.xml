@@ -1,0 +1,11 @@
+<Metadata>
+  <Name>TempLightningMod</Name>
+  <Description>Softens the graveyard lightning flashes to reduce photosensitivity risk.</Description>
+  <Author>darkid</Author>
+  <Version>0.1.0</Version>
+  <LibraryName>TempLightningMod.dll</LibraryName>
+  <Entrypoint>TempLightningMod.ModComponent</Entrypoint>
+  <Dependencies>
+    <DependencyInfo Name="HAT" MinimumVersion="3.0" />
+  </Dependencies>
+</Metadata>
