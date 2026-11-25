@@ -7,9 +7,9 @@ using FezGame.Services;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MonoMod.RuntimeDetour;
-using static TempLightningMod.ModComponent;
+using static FlickerFreeFez.ModComponent;
 
-namespace TempLightningMod;
+namespace FlickerFreeFez;
 
 // Vanilla's INDUS_CITY sky flickers on and off instead of using RainHost's lightning.
 internal sealed class SkyFlickerHost : DrawableGameComponent
@@ -20,12 +20,10 @@ internal sealed class SkyFlickerHost : DrawableGameComponent
     // Vanilla's DoFlicker counts in TimeFactor / 360 seconds, and the default TimeFactor is 260.
     private const float VanillaTimeScale = 360f / 260f;
 
-    // Overwritten every frame so vanilla's DoFlicker never fires.
-    private static readonly FieldInfo FlickerInField = typeof(SkyHost).GetField("flickerIn", BindingFlags.NonPublic | BindingFlags.Instance);
     private static readonly FieldInfo OriginalOpacityField = typeof(SkyHost).GetNestedType("BgLayerState", BindingFlags.NonPublic).GetField("OriginalOpacity");
 
-    // The same masks that vanilla's RainHost.Draw flashes white.
-    private static readonly StencilMask[] SkyMasks = [StencilMask.Sky, StencilMask.Trails, StencilMask.SkyLayer1, StencilMask.SkyLayer2, StencilMask.SkyLayer3];
+    // Overwritten every frame so vanilla's DoFlicker never fires.
+    private static readonly FieldInfo FlickerInField = typeof(SkyHost).GetField("flickerIn", BindingFlags.NonPublic | BindingFlags.Instance);
 
     [ServiceDependency]
     public IGameLevelManager LevelManager { private get; set; }
@@ -96,9 +94,6 @@ internal sealed class SkyFlickerHost : DrawableGameComponent
             return;
         }
 
-        FlickerInField.SetValue(self, float.MaxValue);
-        orig(self, gameTime);
-
         var canStartFlicker = !GameState.Paused && !GameState.InMap && !GameState.Loading;
         var delta = 0f;
         if (_secondsIntoFlicker >= 0f || canStartFlicker)
@@ -146,28 +141,28 @@ internal sealed class SkyFlickerHost : DrawableGameComponent
 
         // Vanilla's flickering state is held for the whole flicker, and Draw darkens it back down.
         _brightness = brightness;
+        FlickerInField.SetValue(self, float.MaxValue);
         self.flickering = _secondsIntoFlicker >= 0f;
         for (var i = 0; i < 16; i++)
         {
             var group = self.BgLayers.Groups[i];
             group.Material.Opacity = (float)OriginalOpacityField.GetValue(group.CustomData) * (1f - brightness * PeakOpacity);
         }
+
+        orig(self, gameTime);
     }
 
     public override void Draw(GameTime gameTime)
     {
-        if (GameState.Loading || GameState.InMap || LevelManager.Sky?.Name != "INDUS_CITY" || !SkyHost.Instance.flickering)
+        if (GameState.Loading || GameState.InMap || _secondsIntoFlicker < 0f)
         {
             return;
         }
 
-        var color = new Color(0f, 0f, 0f, 1f - _brightness * PeakOpacity);
+        // Only the sky has been drawn so far, so this doesn't need a stencil mask.
         GraphicsDevice.SetBlendingMode(BlendingMode.Alphablending);
-        foreach (var mask in SkyMasks)
-        {
-            GraphicsDevice.PrepareStencilRead(CompareFunction.Equal, mask);
-            TargetRenderer.DrawFullscreen(color);
-        }
+        GraphicsDevice.PrepareStencilRead(CompareFunction.Always, StencilMask.None);
+        TargetRenderer.DrawFullscreen(new Color(0f, 0f, 0f, 1f - _brightness * PeakOpacity));
         GraphicsDevice.PrepareStencilWrite(StencilMask.None);
     }
 }

@@ -8,10 +8,11 @@ using FezGame.Services;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
 using MonoMod.RuntimeDetour;
-using static TempLightningMod.ModComponent;
+using static FlickerFreeFez.ModComponent;
 
-namespace TempLightningMod;
+namespace FlickerFreeFez;
 
+// Vanilla's RainHost lightning flashes 2-3 times per strike, this replaces it with one slow, faded flash.
 internal sealed class RainFlashHost : GameComponent
 {
     private const float PeakOpacity = 0.75f;

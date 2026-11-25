@@ -1,7 +1,7 @@
 using FezEngine.Tools;
 using Microsoft.Xna.Framework;
 
-namespace TempLightningMod;
+namespace FlickerFreeFez;
 
 // HAT creates this component using its public Game constructor.
 public sealed class ModComponent : GameComponent
