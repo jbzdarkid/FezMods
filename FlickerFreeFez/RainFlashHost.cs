@@ -12,23 +12,23 @@ using static FlickerFreeFez.ModComponent;
 
 namespace FlickerFreeFez;
 
-// Vanilla's RainHost lightning flashes 2-3 times per strike, this replaces it with one slow, faded flash.
+// Replaces the vanilla graveyard's sharp lightning flashes with a smoother flash.
 internal sealed class RainFlashHost : GameComponent
 {
     private const float PeakOpacity = 0.75f;
-    private const float FadeInSeconds = 0.5f;
-    private const float HoldSeconds = 0.3f;
-    private const float FadeOutSeconds = 1.0f;
+    private const float FadeInSeconds = 0.2f;
+    private const float HoldSeconds = 0.1f;
+    private const float FadeOutSeconds = 0.2f;
 
-    private static readonly FieldInfo DoThunderField = typeof(RainHost).GetField("doThunder", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo LightningField = typeof(RainHost).GetField("lightning", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo PreThunderSoundField = typeof(RainHost).GetField("sPreThunder", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo LightningSoundsField = typeof(RainHost).GetField("lightningSounds", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static readonly FieldInfo DoThunderField = GetPrivateField<RainHost>("doThunder");
+    private static readonly FieldInfo LightningField = GetPrivateField<RainHost>("lightning");
+    private static readonly FieldInfo PreThunderSoundField = GetPrivateField<RainHost>("sPreThunder");
+    private static readonly FieldInfo LightningSoundsField = GetPrivateField<RainHost>("lightningSounds");
 
-    // Overwritten every frame so vanilla's Draw renders our flash.
-    private static readonly FieldInfo FlashInField = typeof(RainHost).GetField("flashIn", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo FlashOpacityField = typeof(RainHost).GetField("flashOpacity", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo SinceFlashField = typeof(RainHost).GetField("sinceFlash", BindingFlags.NonPublic | BindingFlags.Instance);
+    // These three are used to customize the base game's Draw behavior.
+    private static readonly FieldInfo FlashInField = GetPrivateField<RainHost>("flashIn");
+    private static readonly FieldInfo FlashOpacityField = GetPrivateField<RainHost>("flashOpacity");
+    private static readonly FieldInfo SinceFlashField = GetPrivateField<RainHost>("sinceFlash");
 
     [ServiceDependency]
     public IGameLevelManager LevelManager { private get; set; }
@@ -110,7 +110,7 @@ internal sealed class RainFlashHost : GameComponent
         // This is the first frame where the fade-in has finished, play the audio
         if (InProgress(_secondsIntoStrike - FadeInSeconds, delta))
         {
-            if (!_preThunder.Dead)
+            if (_preThunder != null && !_preThunder.Dead)
             {
                 _preThunder.Cue.Stop();
             }
@@ -141,6 +141,7 @@ internal sealed class RainFlashHost : GameComponent
             ResetLightningStrike();
         }
 
+        // Apply our customizations (and disable the vanilla game's lightning effect)
         FlashInField.SetValue(self, TimeSpan.MaxValue);
         FlashOpacityField.SetValue(self, brightness * PeakOpacity);
         SinceFlashField.SetValue(self, TimeSpan.FromSeconds(-0.2 * brightness));

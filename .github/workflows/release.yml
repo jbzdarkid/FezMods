@@ -1,0 +1,46 @@
+name: Build and package release
+on:
+  pull_request:
+  push:
+    branches:
+      - 'master'
+
+# Serialize releases so that two quick pushes won't collide on revision count.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: windows-2022
+    permissions:
+      contents: write  # needed by `gh release create` (only used on master push)
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # full history for `git rev-list --count`
+    - name: Compute version and stamp manifest
+      id: ver
+      shell: bash
+      run: |
+        set -euo pipefail
+        tag="v0.0.$(git rev-list --count HEAD)"
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+    - name: Build the codebase
+      run: dotnet build FlickerFreeFez
+    - name: Copy files to output directory
+      run: |
+        mkdir output
+        cp ./FlickerFreeFez/bin/Debug/FlickerFreeFez.dll output
+        cp ./FlickerFreeFez/Metadata.xml output
+    - name: Create GitHub Release
+      if: github.event_name == 'push'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        $tag = '${{ steps.ver.outputs.tag }}'
+        $zip = 'flicker-free-fez.zip'
+        Compress-Archive -Path output/* -DestinationPath $zip -Force
+        gh release create $tag $zip --title $tag --notes "Automated release for ${{ github.sha }}." --target ${{ github.sha }}
