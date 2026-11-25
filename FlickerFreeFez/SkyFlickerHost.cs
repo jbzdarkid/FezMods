@@ -1,18 +1,18 @@
 using System.Reflection;
 using FezEngine.Components;
 using FezEngine.Services;
+using FezEngine.Structure;
 using FezEngine.Tools;
 using FezGame.Services;
 using Microsoft.Xna.Framework;
-using Mono.Cecil.Cil;
-using MonoMod.Cil;
+using Microsoft.Xna.Framework.Graphics;
 using MonoMod.RuntimeDetour;
 using static FlickerFreeFez.ModComponent;
 
 namespace FlickerFreeFez;
 
 // Replaces the NU ZU flickering sky with a slower, in-and-out effect.
-internal sealed class SkyFlickerHost : GameComponent
+internal sealed class SkyFlickerHost : DrawableGameComponent
 {
     private const float PeakOpacity = 1f;
     private const float FadeInSeconds = 0.25f;
@@ -33,8 +33,10 @@ internal sealed class SkyFlickerHost : GameComponent
     [ServiceDependency]
     public ISoundManager SoundManager { private get; set; }
 
+    [ServiceDependency]
+    public ITargetRenderingManager TargetRenderer { private get; set; }
+
     private Hook _skyHostUpdateHook;
-    private ILHook _lightingPreDrawHook;
     // Starts negative and counts up to 0 at the start of each flash in a sky flicker (1 or 2 flashes).
     // Then keeps counting to track the different parts of the flash, until it resets back to a negative (for the next one).
     private float _secondsIntoFlash;
@@ -44,6 +46,8 @@ internal sealed class SkyFlickerHost : GameComponent
 
     public SkyFlickerHost(Game game) : base(game)
     {
+        // After SkyHost (0), before the level (5) and the rain (20), so only the sky is darkened.
+        DrawOrder = 2;
     }
 
     public override void Initialize()
@@ -52,15 +56,11 @@ internal sealed class SkyFlickerHost : GameComponent
         LevelManager.SkyChanged += OnSkyChanged;
         OnSkyChanged();
         _skyHostUpdateHook = new Hook(typeof(SkyHost).GetMethod("Update"), SkyHostUpdate);
-        _lightingPreDrawHook = new ILHook(
-            typeof(LightingPostProcess).GetMethod("PreDraw", BindingFlags.NonPublic | BindingFlags.Instance),
-            LightingPostProcessPreDraw);
     }
 
     protected override void Dispose(bool disposing)
     {
         _skyHostUpdateHook?.Dispose();
-        _lightingPreDrawHook?.Dispose();
         base.Dispose(disposing);
     }
 
@@ -143,7 +143,7 @@ internal sealed class SkyFlickerHost : GameComponent
             NextFlash();
         }
 
-        // Like vanilla, the sky is drawn lit while flickering, and the light map darkens it (see LightMapClearColor).
+        // Vanilla draws the sky lit while flickering, and Draw darkens it back down. At zero brightness, vanilla's own dark state takes over.
         _brightness = brightness;
         FlickerInField.SetValue(self, float.MaxValue);
         self.flickering = brightness > 0f;
@@ -157,23 +157,18 @@ internal sealed class SkyFlickerHost : GameComponent
         orig(self, gameTime);
     }
 
-    // Vanilla clears the light map to black while this sky isn't flickering, which darkens the whole screen,
-    // and to neutral grey while it is. This always takes the black branch, then swaps in LightMapClearColor.
-    private void LightingPostProcessPreDraw(ILContext il)
+    public override void Draw(GameTime gameTime)
     {
-        var cursor = new ILCursor(il);
-        cursor.GotoNext(MoveType.After, i => i.MatchLdfld<SkyHost>("flickering"));
-        cursor.Emit(OpCodes.Pop);
-        cursor.Emit(OpCodes.Ldc_I4_0);
-        cursor.GotoNext(MoveType.After, i => i.MatchNewobj<Color>());
-        cursor.Emit(OpCodes.Pop);
-        cursor.EmitDelegate<Func<Color>>(LightMapClearColor);
-    }
+        // Vanilla's SkyHost.Draw skips the sky in these states.
+        if ((GameState.Loading && !GameState.FarawaySettings.InTransition) || GameState.InMap || _secondsIntoFlash < 0f)
+        {
+            return;
+        }
 
-    // Fades between vanilla's black (dark) and neutral grey (lit) clear colors.
-    private Color LightMapClearColor()
-    {
-        var grey = 0.5f * _brightness * PeakOpacity;
-        return new Color(grey, grey, grey, 0f);
+        // Only the sky has been drawn so far, so this doesn't need a stencil mask.
+        GraphicsDevice.SetBlendingMode(BlendingMode.Alphablending);
+        GraphicsDevice.PrepareStencilRead(CompareFunction.Always, StencilMask.None);
+        TargetRenderer.DrawFullscreen(new Color(0f, 0f, 0f, 1f - _brightness * PeakOpacity));
+        GraphicsDevice.PrepareStencilWrite(StencilMask.None);
     }
 }
